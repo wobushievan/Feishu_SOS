@@ -1,0 +1,33 @@
+{
+  "title": "Safety Status Feedback",
+  "subtitle": "Please click a button below to confirm your safety status",
+  "status": {
+    "safe": {
+      "label": "I am Safe",
+      "description": "I am currently safe and do not need assistance"
+    },
+    "needHelp": {
+      "label": "I Need Help",
+      "description": "I am in an emergency and need assistance"
+    },
+    "notApplicable": {
+      "label": "Not in UAE",
+      "description": "I am currently not in the affected area"
+    }
+  },
+  "submitted": {
+    "title": "Feedback Submitted",
+    "message": "Thank you. Your safety status has been recorded.",
+    "close": "Close Page"
+  },
+  "expired": {
+    "title": "Event Closed",
+    "message": "This safety check event has ended. Feedback is no longer accepted."
+  },
+  "notFound": {
+    "title": "Event Not Found",
+    "message": "Event not found or has been deleted"
+  },
+  "hint": "You can update your status by clicking again if needed",
+  "endTime": "End Time"
+}

@@ -1,0 +1,46 @@
+{
+  "app": {
+    "name": "员工紧急安全确认",
+    "title": "安全点名系统"
+  },
+  "actions": {
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "confirm": "确认",
+    "close": "关闭",
+    "create": "创建",
+    "edit": "编辑",
+    "submit": "提交",
+    "search": "搜索",
+    "export": "导出",
+    "remind": "提醒",
+    "loading": "加载中...",
+    "select": "请选择"
+  },
+  "status": {
+    "draft": "草稿",
+    "ongoing": "进行中",
+    "completed": "已完成"
+  },
+  "table": {
+    "action": "操作"
+  },
+  "dialog": {
+    "confirmDelete": "确认删除",
+      "deleteWarning": "确定要删除「{name}」吗？此操作无法撤销。"
+  },
+  "toast": {
+    "createSuccess": "创建成功",
+    "createError": "创建失败",
+    "deleteSuccess": "删除成功",
+    "deleteError": "删除失败",
+    "submitSuccess": "提交成功",
+    "submitError": "提交失败",
+    "exportSuccess": "导出成功",
+    "exportError": "导出失败"
+  },
+  "pagination": {
+    "total": "共 {total} 条"
+  }
+}

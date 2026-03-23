@@ -1,0 +1,10 @@
+{
+  "required": "This field is required",
+  "minLength": "Minimum {count} characters required",
+  "maxLength": "Maximum {count} characters allowed",
+  "event": {
+    "titleRequired": "Please enter event title",
+    "recipientsRequired": "Please select at least one recipient",
+    "endTimeRequired": "Please select end time"
+  }
+}

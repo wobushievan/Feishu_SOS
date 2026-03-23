@@ -1,0 +1,63 @@
+{
+  "list": {
+    "title": "Event List",
+    "newEvent": "New Event",
+    "filter": {
+      "allStatus": "All Status"
+    },
+    "columns": {
+      "title": "Event Title",
+      "type": "Type",
+      "status": "Status",
+      "endTime": "End Time",
+      "recipients": "Recipients",
+      "createdAt": "Created At",
+      "noResponse": "No Response"
+    }
+  },
+  "detail": {
+    "title": "Event Detail",
+    "endTime": "End Time",
+    "exportList": "Export List",
+    "remindUnreplied": "Remind Unreplied",
+    "feedbackList": "Employee Feedback List"
+  },
+  "form": {
+    "title": "Event Title",
+    "type": "Event Type",
+    "description": "Description",
+    "recipients": "Recipients",
+    "sendType": "Send Type",
+    "sendTime": "Send Time",
+    "endTime": "End Time",
+    "placeholder": {
+      "title": "Enter event title",
+      "description": "Enter description",
+      "recipients": "Search users or groups...",
+      "searchName": "Search by name"
+    }
+  },
+  "type": {
+    "emergency": "Emergency",
+    "daily": "Daily Scheduled"
+  },
+  "sendType": {
+    "immediate": "Immediate",
+    "scheduled": "Scheduled"
+  },
+  "statistics": {
+    "total": "Total",
+    "replied": "Replied",
+    "unreplied": "Unreplied",
+    "safe": "Safe",
+    "needHelp": "Need Help",
+    "notApplicable": "Not in UAE"
+  },
+  "table": {
+    "employee": "Employee",
+    "department": "Department",
+    "status": "Status",
+    "feedbackTime": "Feedback Time",
+    "lastNotified": "Last Notified"
+  }
+}

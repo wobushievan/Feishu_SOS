@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+
+# build outputs
+dist/
+build/
+.next/
+out/
+coverage/
+
+# env files
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+
+# macOS
+.DS_Store
+
+# windows
+Thumbs.db
+
+# cache/temp
+.cache/
+tmp/
+
+# editor
+.vscode/
+
+# misc
+*.swp

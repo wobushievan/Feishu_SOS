@@ -1,0 +1,63 @@
+{
+  "list": {
+    "title": "事件列表",
+    "newEvent": "新建事件",
+    "filter": {
+      "allStatus": "全部状态"
+    },
+    "columns": {
+      "title": "事件标题",
+      "type": "类型",
+      "status": "状态",
+      "endTime": "截止时间",
+      "recipients": "接收人",
+      "createdAt": "创建时间",
+      "noResponse": "未回复"
+    }
+  },
+  "detail": {
+    "title": "事件详情",
+    "endTime": "截止时间",
+    "exportList": "导出名单",
+    "remindUnreplied": "提醒未回复",
+    "feedbackList": "员工反馈列表"
+  },
+  "form": {
+    "title": "事件标题",
+    "type": "事件类型",
+    "description": "事件说明",
+    "recipients": "通知对象",
+    "sendType": "发送方式",
+    "sendTime": "发送时间",
+    "endTime": "截止时间",
+    "placeholder": {
+      "title": "请输入事件标题",
+      "description": "请输入事件说明",
+      "recipients": "搜索用户或群组...",
+      "searchName": "按姓名搜索"
+    }
+  },
+  "type": {
+    "emergency": "紧急事件",
+    "daily": "日常定时"
+  },
+  "sendType": {
+    "immediate": "立即发送",
+    "scheduled": "定时发送"
+  },
+  "statistics": {
+    "total": "总人数",
+    "replied": "已回复",
+    "unreplied": "未回复",
+    "safe": "安全",
+    "needHelp": "需要帮助",
+    "notApplicable": "不在阿联酋"
+  },
+  "table": {
+    "employee": "员工",
+    "department": "部门",
+    "status": "状态",
+    "feedbackTime": "反馈时间",
+    "lastNotified": "最后通知"
+  }
+}

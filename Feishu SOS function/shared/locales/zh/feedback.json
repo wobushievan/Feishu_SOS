@@ -1,0 +1,33 @@
+{
+  "title": "安全状态反馈",
+  "subtitle": "请点击下方按钮确认您的安全状态",
+  "status": {
+    "safe": {
+      "label": "我安全",
+      "description": "我目前安全，不需要协助"
+    },
+    "needHelp": {
+      "label": "我需要帮助",
+      "description": "我遇到紧急情况，需要帮助"
+    },
+    "notApplicable": {
+      "label": "我不在阿联酋",
+      "description": "我目前不在受影响地区"
+    }
+  },
+  "submitted": {
+    "title": "反馈已提交",
+    "message": "感谢您的配合，您的安全状态已记录",
+    "close": "关闭页面"
+  },
+  "expired": {
+    "title": "事件已结束",
+    "message": "该安全确认事件已截止，不再接受反馈"
+  },
+  "notFound": {
+    "title": "事件不存在",
+    "message": "事件不存在或已被删除"
+  },
+  "hint": "如需更新状态，可再次点击按钮",
+  "endTime": "截止时间"
+}

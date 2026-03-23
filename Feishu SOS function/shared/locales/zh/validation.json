@@ -1,0 +1,10 @@
+{
+  "required": "此项为必填项",
+  "minLength": "最少需要 {count} 个字符",
+  "maxLength": "最多允许 {count} 个字符",
+  "event": {
+    "titleRequired": "请输入事件标题",
+    "recipientsRequired": "请至少选择一个通知对象",
+    "endTimeRequired": "请选择截止时间"
+  }
+}

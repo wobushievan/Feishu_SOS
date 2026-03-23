@@ -1,0 +1,77 @@
+{
+  "id": "send_security_checkin_notification",
+  "pluginKey": "@official-plugins/send-feishu-message",
+  "pluginVersion": "1.0.23",
+  "name": "发送安全点名通知",
+  "description": "向目标员工发送安全点名飞书消息卡片，包含状态反馈按钮，跳转至反馈页面完成反馈",
+  "icon": "",
+  "paramsSchema": {
+    "properties": {
+      "baseUrl": {
+        "type": "string",
+        "description": "完整的反馈URL地址（已包含eventId和userId参数）"
+      },
+      "eventTitle": {
+        "description": "安全点名事件标题",
+        "type": "string"
+      },
+      "eventDescription": {
+        "type": "string",
+        "description": "安全点名事件说明"
+      },
+      "deadlineTime": {
+        "type": "string",
+        "description": "反馈截止时间"
+      },
+      "receiverIds": {
+        "description": "接收通知的员工ID列表",
+        "type": "array",
+        "items": {
+          "type": "string",
+          "description": "员工用户ID"
+        }
+      }
+    },
+    "required": [
+      "baseUrl",
+      "receiverIds",
+      "eventTitle",
+      "eventDescription",
+      "deadlineTime"
+    ],
+    "type": "object"
+  },
+  "formValue": {
+    "receiverGroupList": [],
+    "buttons": [
+      {
+        "style": "primary",
+        "text": "我安全",
+        "type": "url",
+        "url": "{{input.baseUrl}}&status=safe"
+      },
+      {
+        "url": "{{input.baseUrl}}&status=need_help",
+        "style": "danger",
+        "text": "我需要帮助",
+        "type": "url"
+      },
+      {
+        "text": "我不在本地",
+        "type": "url",
+        "url": "{{input.baseUrl}}&status=not_applicable",
+        "style": "default"
+      }
+    ],
+    "title": {
+      "titleColor": "orange",
+      "title": "{{input.eventTitle}}"
+    },
+    "content": "{{input.eventDescription}}\n\n**反馈截止时间：** {{input.deadlineTime}}\n\n请点击下方按钮反馈您当前状态：",
+    "sender": "bot",
+    "receiverUserList": "{{input.receiverIds}}"
+  },
+  "createdAt": 1773714571911,
+  "updatedAt": 1773821376824,
+  "createdBy": 7365781430046588930
+}
