@@ -246,7 +246,7 @@ export class FeedbackController {
     if (!userId) {
       throw new NotFoundException('缺少用户ID参数');
     }
-    return this.safetyCheckService.getFeedbackEventInfo(eventId, userId);
+    return this.safetyCheckService.getFeedbackEventInfo(eventId, userId, 'api.feedback.query.userId');
   }
 
   /**
@@ -261,6 +261,6 @@ export class FeedbackController {
     if (!userId) {
       throw new NotFoundException('缺少用户ID参数');
     }
-    return this.safetyCheckService.submitFeedback(eventId, userId, dto);
+    return this.safetyCheckService.submitFeedback(eventId, userId, dto, 'api.feedback.query.userId');
   }
 }

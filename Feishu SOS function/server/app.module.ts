@@ -1,5 +1,6 @@
 import { APP_FILTER } from '@nestjs/core';
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { PlatformModule } from '@lark-apaas/fullstack-nestjs-core';
 
 import { GlobalExceptionFilter } from './common/filters/exception.filter';
@@ -9,6 +10,9 @@ import { TranslationModule } from './modules/translation/translation.module';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
     // 平台 Module，提供平台能力
     PlatformModule.forRoot(),
     // ====== @route-section: business-modules START ======

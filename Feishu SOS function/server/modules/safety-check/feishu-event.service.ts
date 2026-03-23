@@ -1,10 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { WSClient, EventDispatcher, LoggerLevel } from '@larksuiteoapi/node-sdk';
 import { FeishuService } from './feishu.service';
 import { SafetyCheckService } from './safety-check.service';
-
-const FEISHU_APP_ID = 'cli_a9325680d47adcc5';
-const FEISHU_APP_SECRET = 'Y9NhnKJGLyf6xnjlMxiSjgsl4DTtbJpb';
+import { getFeishuEnvConfig } from '../../common/config/feishu-env';
 
 @Injectable()
 export class FeishuEventService implements OnModuleInit {
@@ -12,15 +11,22 @@ export class FeishuEventService implements OnModuleInit {
   private wsClient: WSClient | null = null;
 
   constructor(
+    private readonly configService: ConfigService,
     private readonly feishuService: FeishuService,
     private readonly safetyCheckService: SafetyCheckService,
   ) {}
 
+  private logStructured(message: string, payload: Record<string, unknown>): void {
+    this.logger.log(`${message} ${JSON.stringify(payload)}`);
+  }
+
   onModuleInit() {
+    const { appId, appSecret } = getFeishuEnvConfig(this.configService);
+
     // 在 onModuleInit 中创建 WSClient，避免构造函数中的循环引用
     this.wsClient = new WSClient({
-      appId: FEISHU_APP_ID,
-      appSecret: FEISHU_APP_SECRET,
+      appId,
+      appSecret,
       loggerLevel: LoggerLevel.info,
     });
 
@@ -48,6 +54,18 @@ export class FeishuEventService implements OnModuleInit {
           const { action, operator, context } = data;
           const eventId = action.value?.eventId as string;
           const rawStatus = action.value?.status as string;
+          this.logStructured('[card.action.trigger] callback diagnostics', {
+            eventId,
+            rawStatus,
+            operatorUserId: operator.user_id,
+            operatorOpenId: operator.open_id,
+            operatorUnionId: operator.union_id,
+            operatorUserIdType: operator.user_id ? 'user_id' : undefined,
+            operatorOpenIdType: operator.open_id ? 'open_id' : undefined,
+            operatorUnionIdType: operator.union_id ? 'union_id' : undefined,
+            contextOpenMessageId: context.open_message_id,
+            contextOpenChatId: context.open_chat_id,
+          });
 
           if (!eventId || !rawStatus) {
             this.logger.warn('缺少 eventId 或 status 参数');
@@ -64,17 +82,25 @@ export class FeishuEventService implements OnModuleInit {
 
           let userId = operator.user_id;
           const openId = operator.open_id;
+          let resolvedIdType: 'user_id' | 'open_id' | 'unknown' = operator.user_id ? 'user_id' : 'unknown';
+          let resolvedIdSource = operator.user_id ? 'operator.user_id' : 'unresolved';
 
           // 如果没有 user_id，尝试通过 open_id 查询
           if (!userId && openId) {
             this.logger.log(`No user_id in operator, trying to get user_id by open_id: ${openId}`);
             userId = await this.feishuService.getUserIdByOpenId(openId);
+            if (userId) {
+              resolvedIdType = 'user_id';
+              resolvedIdSource = 'operator.open_id -> FeishuService.getUserIdByOpenId';
+            }
           }
 
           // 如果仍然无法获取 user_id，使用 open_id 作为 fallback
           if (!userId && openId) {
             this.logger.log(`Cannot get user_id by open_id, using open_id directly: ${openId}`);
             userId = openId;
+            resolvedIdType = 'open_id';
+            resolvedIdSource = 'operator.open_id fallback';
           }
 
           if (!userId) {
@@ -85,6 +111,16 @@ export class FeishuEventService implements OnModuleInit {
           }
 
           this.logger.log(`Submitting feedback with userId: ${userId}`);
+          this.logStructured('[card.action.trigger] resolved submit identity', {
+            eventId,
+            status,
+            submitId: userId,
+            submitIdType: resolvedIdType,
+            submitIdSource: resolvedIdSource,
+            operatorUserId: operator.user_id,
+            operatorOpenId: operator.open_id,
+            operatorUnionId: operator.union_id,
+          });
 
           try {
             // 提交反馈
@@ -92,6 +128,7 @@ export class FeishuEventService implements OnModuleInit {
               eventId,
               userId,
               { status: status as any },
+              'feishu.card.action.trigger.operator',
             );
 
             if (!result.success) {

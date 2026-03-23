@@ -31,6 +31,24 @@ import type {
 import { FeishuChatService } from './feishu-chat.service';
 import { FeishuService } from './feishu.service';
 
+type DiagnosticIdType = 'user_id' | 'open_id' | 'union_id' | 'user_profile' | 'chat_id' | 'user_id_or_open_id';
+type ExpandedMemberSource = 'notificationScope.user.id' | 'FeishuChatService.getChatMembers(member_id_type=open_id)';
+type FeedbackEntrySource = 'employee_feedback.employee_id.user_profile.user_id' | 'employee_feedback.employee_open_id';
+type FeedbackRequestSource = 'api.feedback.query.userId' | 'feishu.card.action.trigger.operator';
+
+interface ExpandedNotificationMember {
+  id: string;
+  department?: string;
+  idType: 'user_id' | 'open_id';
+  sourceField: ExpandedMemberSource;
+}
+
+interface SendNotificationLogContext {
+  triggerSource: 'createEvent' | 'remindUnreplied';
+  receiverSourceField: string;
+  receiverIdTypeByValue: Record<string, DiagnosticIdType>;
+}
+
 @Injectable()
 export class SafetyCheckService {
   private readonly logger = new Logger(SafetyCheckService.name);
@@ -43,6 +61,10 @@ export class SafetyCheckService {
     @Inject() private readonly configService: ConfigService,
     @Inject() private readonly httpService: HttpService,
   ) {}
+
+  private logStructured(message: string, payload: Record<string, unknown>): void {
+    this.logger.log(`${message} ${JSON.stringify(payload)}`);
+  }
 
   /**
    * 获取事件列表
@@ -97,18 +119,35 @@ export class SafetyCheckService {
    * 展开通知对象，将群组转换为成员列表
    * 返回带部门信息的成员对象数组
    */
-  private async expandNotificationScope(targets: NotificationTarget[]): Promise<Array<{ id: string; department?: string }>> {
+  private async expandNotificationScope(targets: NotificationTarget[]): Promise<ExpandedNotificationMember[]> {
     this.logger.log(`[expandNotificationScope] === 开始展开通知对象，targets数量: ${targets.length} ===`);
     this.logger.log(`[expandNotificationScope] 原始 targets: ${JSON.stringify(targets, null, 2)}`);
+    this.logStructured('[expandNotificationScope] target diagnostics', {
+      targetCount: targets.length,
+      targets: targets.map((target, index) => ({
+        index,
+        targetType: target.type,
+        sourceField: 'CreateEventRequest.notificationScope[].id',
+        idValue: target.id,
+        idType: target.type === 'user' ? 'user_id' : 'chat_id',
+        departmentSourceField: target.type === 'user' ? 'CreateEventRequest.notificationScope[].department' : undefined,
+        departmentValue: target.department,
+      })),
+    });
 
     // 直接选择的用户（带部门信息）
-    const directUsers: Array<{ id: string; department?: string }> = [];
+    const directUsers: ExpandedNotificationMember[] = [];
     const chatIds: string[] = [];
 
     // 区分用户和群组
     for (const target of targets) {
       if (target.type === 'user') {
-        directUsers.push({ id: target.id, department: target.department });
+        directUsers.push({
+          id: target.id,
+          department: target.department,
+          idType: 'user_id',
+          sourceField: 'notificationScope.user.id',
+        });
       } else if (target.type === 'chat') {
         chatIds.push(target.id);
       }
@@ -126,14 +165,27 @@ export class SafetyCheckService {
       const chatMembersArrays = await Promise.all(chatMemberPromises);
       chatMembers = chatMembersArrays.flat();
       this.logger.log(`[expandNotificationScope] 群组成员IDs: ${JSON.stringify(chatMembers)}`);
+      this.logStructured('[expandNotificationScope] expanded chat members', {
+        sourceField: 'FeishuChatService.getChatMembers(chatId)',
+        returnIdField: 'member_id',
+        returnIdType: 'open_id',
+        chatCount: chatIds.length,
+        chatIds,
+        chatMembers,
+      });
     }
 
     // 合并：直接选择的用户（带部门）+ 群组成员（需后续查询部门）
-    const chatMemberObjects = chatMembers.map(id => ({ id, department: undefined as string | undefined }));
+    const chatMemberObjects: ExpandedNotificationMember[] = chatMembers.map(id => ({
+      id,
+      department: undefined as string | undefined,
+      idType: 'open_id',
+      sourceField: 'FeishuChatService.getChatMembers(member_id_type=open_id)',
+    }));
     const allMembers = [...directUsers, ...chatMemberObjects];
 
     // 去重（优先保留有部门信息的）
-    const memberMap = new Map<string, { id: string; department?: string }>();
+    const memberMap = new Map<string, ExpandedNotificationMember>();
     for (const member of allMembers) {
       const existing = memberMap.get(member.id);
       if (!existing || (!existing.department && member.department)) {
@@ -144,6 +196,15 @@ export class SafetyCheckService {
     const result = Array.from(memberMap.values());
     // 关键：打印最终返回结果，确认是否为对象数组
     this.logger.log(`[expandNotificationScope] === 最终返回结果: ${JSON.stringify(result, null, 2)} ===`);
+    this.logStructured('[expandNotificationScope] deduplicated members', {
+      resultCount: result.length,
+      members: result.map(member => ({
+        idValue: member.id,
+        idType: member.idType,
+        sourceField: member.sourceField,
+        department: member.department,
+      })),
+    });
     return result;
   }
 
@@ -154,6 +215,15 @@ export class SafetyCheckService {
     const now = new Date();
     const sendTime = new Date(dto.sendTime);
     const deadlineTime = new Date(dto.deadlineTime);
+    this.logStructured('[createEvent] request diagnostics', {
+      creatorSourceField: 'req.userContext.userId',
+      creatorId,
+      creatorIdType: 'user_id',
+      notificationTargetCount: dto.notificationScope.length,
+      sendType: dto.sendType,
+      baseUrlSource: baseUrl ? 'request-origin-base-url' : 'not-provided',
+      baseUrlProvided: !!baseUrl,
+    });
 
     // 确定事件状态
     let status: EventStatus = 'draft';
@@ -171,6 +241,16 @@ export class SafetyCheckService {
     // 打印关键数据结构
     this.logger.log(`[CreateEvent] allMemberIds: ${JSON.stringify(allMemberIds)}`);
     this.logger.log(`[CreateEvent] allMembers: ${JSON.stringify(allMembers, null, 2)}`);
+    this.logStructured('[createEvent] expanded notification members', {
+      notificationScopeStorageField: 'safety_check_event.notification_scope',
+      notificationScopeStorageValueType: 'user_id_or_open_id[]',
+      members: allMembers.map(member => ({
+        idValue: member.id,
+        idType: member.idType,
+        sourceField: member.sourceField,
+        department: member.department,
+      })),
+    });
 
     const [result] = await this.db
       .insert(safetyCheckEvent)
@@ -221,6 +301,29 @@ export class SafetyCheckService {
       
       // 详细日志：对比各种 department 来源
       this.logger.log(`[CreateEvent] User ${id}: frontendDept=${departmentFromFrontend}, backendDept=${departmentFromBackend}, final=${finalDepartment}`);
+      this.logStructured('[createEvent] feedback record diagnostics', {
+        eventId: result.id,
+        sourceIdValue: id,
+        sourceIdType: allMembers.find(member => member.id === id)?.idType || 'user_id_or_open_id',
+        sourceField: allMembers.find(member => member.id === id)?.sourceField || 'unknown',
+        writeFields: {
+          employeeId: {
+            targetField: 'employee_feedback.employee_id.user_profile.user_id',
+            value: id,
+            storedType: 'user_profile',
+          },
+          employeeOpenId: {
+            targetField: 'employee_feedback.employee_open_id',
+            value: id,
+            storedType: 'user_id_or_open_id',
+          },
+        },
+        departmentSources: {
+          frontend: departmentFromFrontend,
+          backend: departmentFromBackend,
+          final: finalDepartment,
+        },
+      });
       
       return {
         eventId: result.id,
@@ -244,7 +347,13 @@ export class SafetyCheckService {
         title: dto.title,
         description: dto.description,
         deadlineTime: dto.deadlineTime,
-      }, baseUrl).catch((error) => {
+      }, baseUrl, {
+        triggerSource: 'createEvent',
+        receiverSourceField: 'expandNotificationScope -> allMemberIds',
+        receiverIdTypeByValue: Object.fromEntries(
+          allMembers.map(member => [member.id, member.idType]),
+        ),
+      }).catch((error) => {
         this.logger.error(`发送飞书通知失败(事件已创建): ${error instanceof Error ? error.message : String(error)}`);
       });
     }
@@ -468,13 +577,26 @@ export class SafetyCheckService {
     }
 
     const receiverIds = unrepliedFeedbacks.map(f => f.employeeId);
+    this.logStructured('[remindUnreplied] receiver diagnostics', {
+      eventId,
+      receiverSourceField: 'employee_feedback.employee_id.user_profile.user_id',
+      receiverIdType: 'user_id_or_open_id',
+      receiverIds,
+      feedbackRecordCount: unrepliedFeedbacks.length,
+    });
 
     // 调用飞书插件发送提醒
     await this.sendNotification(eventId, receiverIds, {
       title: `[提醒] ${event.title}`,
       description: event.description || '',
       deadlineTime: event.deadlineTime.toISOString(),
-    }, baseUrl);
+    }, baseUrl, {
+      triggerSource: 'remindUnreplied',
+      receiverSourceField: 'employee_feedback.employee_id.user_profile.user_id',
+      receiverIdTypeByValue: Object.fromEntries(
+        receiverIds.map(receiverId => [receiverId, 'user_id_or_open_id' as DiagnosticIdType]),
+      ),
+    });
 
     // 更新最后通知时间
     const now = new Date();
@@ -498,7 +620,22 @@ export class SafetyCheckService {
   /**
    * 获取员工反馈页事件信息
    */
-  async getFeedbackEventInfo(eventId: string, employeeId: string): Promise<GetFeedbackEventInfoResponse> {
+  async getFeedbackEventInfo(
+    eventId: string,
+    employeeId: string,
+    requestSource: FeedbackRequestSource = 'api.feedback.query.userId',
+  ): Promise<GetFeedbackEventInfoResponse> {
+    this.logStructured('[getFeedbackEventInfo] lookup diagnostics', {
+      eventId,
+      requestSource,
+      inputField: requestSource === 'api.feedback.query.userId' ? 'feedback page query userId' : 'feishu callback operator',
+      inputValue: employeeId,
+      inputIdType: 'user_id_or_open_id',
+      lookupField: 'employee_feedback.employee_id.user_profile.user_id',
+      lookupFieldType: 'user_profile',
+      fallbackLookup: 'none',
+    });
+
     const [event] = await this.db
       .select()
       .from(safetyCheckEvent)
@@ -518,6 +655,15 @@ export class SafetyCheckService {
         ),
       );
 
+    this.logStructured('[getFeedbackEventInfo] lookup result', {
+      eventId,
+      requestSource,
+      inputValue: employeeId,
+      matched: !!feedback,
+      matchedField: feedback ? 'employee_feedback.employee_id.user_profile.user_id' : 'none',
+      currentFeedbackStatus: feedback?.feedbackStatus,
+    });
+
     return {
       id: event.id,
       title: event.title,
@@ -535,7 +681,19 @@ export class SafetyCheckService {
     eventId: string,
     employeeId: string,
     dto: SubmitFeedbackRequest,
+    requestSource: FeedbackRequestSource = 'api.feedback.query.userId',
   ): Promise<SubmitFeedbackResponse> {
+    this.logStructured('[submitFeedback] request diagnostics', {
+      eventId,
+      requestSource,
+      inputField: requestSource === 'api.feedback.query.userId' ? 'feedback page query userId' : 'feishu callback resolved operator id',
+      inputValue: employeeId,
+      inputIdType: 'user_id_or_open_id',
+      submitStatus: dto.status,
+      firstMatchField: 'employee_feedback.employee_id.user_profile.user_id',
+      fallbackMatchField: 'employee_feedback.employee_open_id',
+    });
+
     const [event] = await this.db
       .select()
       .from(safetyCheckEvent)
@@ -555,6 +713,8 @@ export class SafetyCheckService {
 
     const now = new Date();
 
+    let matchedBy: FeedbackEntrySource | 'none' = 'none';
+
     // 先尝试用 employeeId (平台用户ID) 匹配
     let result = await this.db
       .update(employeeFeedback)
@@ -569,6 +729,18 @@ export class SafetyCheckService {
         ),
       )
       .returning({ id: employeeFeedback.id });
+
+    this.logStructured('[submitFeedback] primary match result', {
+      eventId,
+      requestSource,
+      inputValue: employeeId,
+      matchField: 'employee_feedback.employee_id.user_profile.user_id',
+      matchFieldType: 'user_profile',
+      updatedCount: result.length,
+    });
+    if (result.length > 0) {
+      matchedBy = 'employee_feedback.employee_id.user_profile.user_id';
+    }
 
     // 如果没有匹配到，尝试用 employeeOpenId (飞书 open_id) 匹配
     if (result.length === 0) {
@@ -585,16 +757,42 @@ export class SafetyCheckService {
           ),
         )
         .returning({ id: employeeFeedback.id });
+
+      this.logStructured('[submitFeedback] fallback match result', {
+        eventId,
+        requestSource,
+        inputValue: employeeId,
+        matchField: 'employee_feedback.employee_open_id',
+        matchFieldType: 'open_id field with mixed stored values',
+        updatedCount: result.length,
+      });
+      if (result.length > 0) {
+        matchedBy = 'employee_feedback.employee_open_id';
+      }
     }
 
     // 检查是否有记录被更新
     if (result.length === 0) {
+      this.logStructured('[submitFeedback] final result', {
+        eventId,
+        requestSource,
+        inputValue: employeeId,
+        matchedField: 'none',
+        success: false,
+      });
       return {
         success: false,
         message: '您不在该事件的接收人列表中，无法提交反馈',
       };
     }
 
+    this.logStructured('[submitFeedback] final result', {
+      eventId,
+      requestSource,
+      inputValue: employeeId,
+      matchedField: matchedBy,
+      success: true,
+    });
     return {
       success: true,
       message: '反馈已提交，感谢您的配合',
@@ -674,20 +872,38 @@ export class SafetyCheckService {
       deadlineTime: string;
     },
     appBaseUrl?: string,
+    logContext?: SendNotificationLogContext,
   ): Promise<void> {
     try {
       this.logger.log(`[sendNotification] 开始发送通知，receiverIds数量: ${receiverIds.length}`);
       this.logger.log(`[sendNotification] receiverIds原始值: ${JSON.stringify(receiverIds)}`);
       this.logger.log(`[sendNotification] appBaseUrl: ${appBaseUrl || '未提供'}`);
+      this.logStructured('[sendNotification] receiver diagnostics', {
+        eventId,
+        triggerSource: logContext?.triggerSource || 'unknown',
+        receiverSourceField: logContext?.receiverSourceField || 'unknown',
+        receiverIds: receiverIds.map(receiverId => ({
+          value: receiverId,
+          idType: logContext?.receiverIdTypeByValue[receiverId] || 'user_id_or_open_id',
+        })),
+      });
 
       if (receiverIds.length === 0) {
         this.logger.warn('[sendNotification] 没有接收者，跳过发送');
         return;
       }
 
-      // 清理接收者ID格式（去掉括号）
-      const cleanReceiverIds = receiverIds.map(id => this.cleanUserId(id));
+      const cleanReceiverEntries = receiverIds.map(receiverId => ({
+        rawId: receiverId,
+        cleanId: this.cleanUserId(receiverId),
+        idType: logContext?.receiverIdTypeByValue[receiverId] || 'user_id_or_open_id',
+      }));
+      const cleanReceiverIds = cleanReceiverEntries.map(entry => entry.cleanId);
       this.logger.log(`[sendNotification] 清理后的receiverIds: ${JSON.stringify(cleanReceiverIds)}`);
+      this.logStructured('[sendNotification] cleaned receiver diagnostics', {
+        eventId,
+        cleanedReceivers: cleanReceiverEntries,
+      });
 
       if (cleanReceiverIds.length === 0) {
         this.logger.warn('[sendNotification] 没有有效的接收者，跳过发送');
@@ -709,20 +925,30 @@ export class SafetyCheckService {
       const BATCH_SIZE = 5; // 控制并发，避免限流
       
       for (let i = 0; i < cleanReceiverIds.length; i += BATCH_SIZE) {
-        const batch = cleanReceiverIds.slice(i, i + BATCH_SIZE);
+        const batch = cleanReceiverEntries.slice(i, i + BATCH_SIZE);
         
         await Promise.all(
-          batch.map(async (receiverId) => {
+          batch.map(async ({ rawId, cleanId, idType }) => {
             // 为每个接收人生成专属反馈 URL（包含 userId）
-            const feedbackUrl = `${finalBaseUrl}/feedback/events/${eventId}?userId=${receiverId}`;
+            const feedbackUrl = `${finalBaseUrl}/feedback/events/${eventId}?userId=${cleanId}`;
             
-            this.logger.log(`[sendNotification] 发送给 receiverId=${receiverId}, URL=${feedbackUrl}`);
+            this.logger.log(`[sendNotification] 发送给 receiverId=${cleanId}, URL=${feedbackUrl}`);
+            this.logStructured('[sendNotification] per receiver payload', {
+              eventId,
+              triggerSource: logContext?.triggerSource || 'unknown',
+              rawReceiverId: rawId,
+              receiverId: cleanId,
+              receiverIdType: idType,
+              receiverSourceField: logContext?.receiverSourceField || 'unknown',
+              feedbackUrlUserIdSource: 'same as cleaned receiverId',
+              feedbackUrl,
+            });
             
             try {
               const result = await this.capabilityService
                 .load('send_security_checkin_notification')
                 .call('send_feishu_message', {
-                  receiverIds: [receiverId], // 单个接收人
+                  receiverIds: [cleanId], // 单个接收人
                   eventTitle: eventData.title,
                   eventDescription: eventData.description || '',
                   eventId: eventId,
@@ -730,10 +956,20 @@ export class SafetyCheckService {
                   baseUrl: feedbackUrl, // 专属 URL（作为 baseUrl 传入）
                 });
               
-              this.logger.log(`[sendNotification] 成功发送给 ${receiverId}, result=${JSON.stringify(result)}`);
+              this.logger.log(`[sendNotification] 成功发送给 ${cleanId}, result=${JSON.stringify(result)}`);
+              this.logStructured('[sendNotification] capability invocation metadata', {
+                eventId,
+                rawReceiverId: rawId,
+                receiverId: cleanId,
+                receiverIdType: idType,
+                capabilityName: 'send_security_checkin_notification',
+                methodName: 'send_feishu_message',
+                capabilityReceiverField: 'receiverIds',
+                receiveIdTypeDeclaredInCode: 'not_explicitly_declared',
+              });
             } catch (error) {
               const errorMsg = error instanceof Error ? error.message : String(error);
-              this.logger.error(`[sendNotification] 发送给 ${receiverId} 失败: ${errorMsg}`);
+              this.logger.error(`[sendNotification] 发送给 ${cleanId} 失败: ${errorMsg}`);
               // 单个失败不影响其他，继续发送
             }
           })

@@ -1,21 +1,26 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Client, AppType, Domain } from '@larksuiteoapi/node-sdk';
-
-const FEISHU_APP_ID = 'cli_a9325680d47adcc5';
-const FEISHU_APP_SECRET = 'Y9NhnKJGLyf6xnjlMxiSjgsl4DTtbJpb';
+import { getFeishuEnvConfig } from '../../common/config/feishu-env';
 
 @Injectable()
 export class FeishuService {
   private readonly logger = new Logger(FeishuService.name);
   private readonly client: Client;
 
-  constructor() {
+  constructor(private readonly configService: ConfigService) {
+    const { appId, appSecret } = getFeishuEnvConfig(this.configService);
+
     this.client = new Client({
-      appId: FEISHU_APP_ID,
-      appSecret: FEISHU_APP_SECRET,
+      appId,
+      appSecret,
       appType: AppType.SelfBuild,
       domain: Domain.Feishu,
     });
+  }
+
+  private logStructured(message: string, payload: Record<string, unknown>): void {
+    this.logger.log(`${message} ${JSON.stringify(payload)}`);
   }
 
   /**
@@ -174,6 +179,16 @@ export class FeishuService {
    */
   async batchGetUserInfo(userIds: string[]): Promise<Map<string, { name: string; department: string }>> {
     this.logger.log(`Batch getting user info for ${userIds.length} users`);
+    this.logStructured('[batchGetUserInfo] input diagnostics', {
+      sourceField: 'batchGetUserInfo(userIds)',
+      inputIdType: 'user_id_or_open_id',
+      inputValues: userIds,
+      lookupPlan: [
+        'contact.user.batchGetId(user_id_type=user_id)',
+        'contact.user.get(user_id_type=open_id) for mapped user_id inputs',
+        'contact.user.get(user_id_type=open_id) fallback for unmapped inputs',
+      ],
+    });
     const result = new Map<string, { name: string; department: string }>();
 
     if (userIds.length === 0) {
@@ -194,6 +209,12 @@ export class FeishuService {
           params: { user_id_type: 'user_id' },
           data: { user_ids: batch } as any,
         });
+        this.logStructured('[batchGetUserInfo] batchGetId request', {
+          batchIndex: Math.floor(i / BATCH_SIZE) + 1,
+          requestField: 'contact.user.batchGetId.data.user_ids',
+          requestUserIdType: 'user_id',
+          batchInputValues: batch,
+        });
 
         if (idMappingRes.code === 0) {
           for (const item of idMappingRes.data?.user_list || []) {
@@ -201,6 +222,13 @@ export class FeishuService {
             if (userItem.user_id && userItem.open_id) {
               userIdToOpenId.set(userItem.user_id, userItem.open_id);
               this.logger.log(`Mapped: user_id=${userItem.user_id} -> open_id=${userItem.open_id}`);
+              this.logStructured('[batchGetUserInfo] resolved user_id mapping', {
+                inputValue: userItem.user_id,
+                inputIdType: 'user_id',
+                resolvedOpenId: userItem.open_id,
+                resolvedOpenIdType: 'open_id',
+                sourceApi: 'contact.user.batchGetId(user_id_type=user_id)',
+              });
             }
           }
         } else {
@@ -219,6 +247,12 @@ export class FeishuService {
       }
     }
     this.logger.log(`Mapped ${userIdToOpenId.size} user_ids, ${unmappedIds.length} unmapped`);
+    this.logStructured('[batchGetUserInfo] post mapping summary', {
+      mappedAsUserIdCount: userIdToOpenId.size,
+      unmappedCount: unmappedIds.length,
+      unmappedInputValues: unmappedIds,
+      fallbackLookupType: 'open_id',
+    });
 
     // 第二步：对成功映射的 user_id，使用 open_id 获取详细信息
     const openIds = Array.from(userIdToOpenId.values());
@@ -241,6 +275,14 @@ export class FeishuService {
             department: departmentName,
           });
           this.logger.log(`Got info for ${originalUserId}: name=${user.name}, dept=${departmentName}`);
+          this.logStructured('[batchGetUserInfo] user info resolved from mapped user_id', {
+            originalInputValue: originalUserId,
+            originalInputType: 'user_id',
+            lookupIdValue: openId,
+            lookupIdType: 'open_id',
+            resolvedName: user.name || '',
+            resolvedDepartment: departmentName,
+          });
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -253,6 +295,11 @@ export class FeishuService {
       this.logger.log(`Fallback: querying ${unmappedIds.length} IDs as open_id`);
       for (const id of unmappedIds) {
         try {
+          this.logStructured('[batchGetUserInfo] fallback open_id lookup', {
+            inputValue: id,
+            inputType: 'open_id',
+            sourceReason: 'batchGetId(user_id_type=user_id) did not map this input',
+          });
           const res = await this.client.contact.user.get({
             params: { user_id_type: 'open_id' },
             path: { user_id: id },
@@ -267,6 +314,14 @@ export class FeishuService {
               department: departmentName,
             });
             this.logger.log(`Got info (fallback) for ${id}: name=${user.name}, dept=${departmentName}`);
+            this.logStructured('[batchGetUserInfo] user info resolved from fallback open_id', {
+              originalInputValue: id,
+              originalInputType: 'open_id',
+              lookupIdValue: id,
+              lookupIdType: 'open_id',
+              resolvedName: user.name || '',
+              resolvedDepartment: departmentName,
+            });
           }
         } catch (error) {
           this.logger.warn(`Fallback query failed for ${id}: ${error instanceof Error ? error.message : String(error)}`);
@@ -275,6 +330,10 @@ export class FeishuService {
     }
 
     this.logger.log(`Successfully got info for ${result.size}/${userIds.length} users`);
+    this.logStructured('[batchGetUserInfo] final result summary', {
+      outputCount: result.size,
+      outputKeys: Array.from(result.keys()),
+    });
     return result;
   }
 
