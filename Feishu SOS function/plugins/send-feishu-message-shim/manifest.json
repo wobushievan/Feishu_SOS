@@ -1,0 +1,39 @@
+{
+  "name": "@official-plugins/send-feishu-message",
+  "displayName": "Send Feishu Message Shim",
+  "form": {
+    "refType": "action"
+  },
+  "actions": [
+    {
+      "key": "send_feishu_message",
+      "name": "send_feishu_message",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "sentCount": {
+            "type": "integer"
+          },
+          "messageIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "success",
+          "sentCount",
+          "messageIds"
+        ]
+      }
+    }
+  ]
+}

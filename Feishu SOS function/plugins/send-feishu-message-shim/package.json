@@ -1,0 +1,6 @@
+{
+  "name": "@official-plugins/send-feishu-message",
+  "version": "1.0.23",
+  "private": true,
+  "main": "index.js"
+}
