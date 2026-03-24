@@ -32,7 +32,6 @@
     "postinstall": "npx -y @lark-apaas/fullstack-cli action-plugin init"
   },
   "dependencies": {
-    "@official-plugins/send-feishu-message": "file:plugins/send-feishu-message-shim",
     "@lark-apaas/fullstack-nestjs-core": "^1.1.22",
     "@larksuiteoapi/node-sdk": "^1.59.0",
     "@nestjs/axios": "^4.0.1",
@@ -41,6 +40,7 @@
     "@nestjs/core": "^10.4.20",
     "@nestjs/platform-express": "^10.4.20",
     "@nestjs/swagger": "^7.4.2",
+    "@official-plugins/send-feishu-message": "file:plugins/send-feishu-message-shim",
     "@tanstack/react-form": "^1.27.6",
     "@tanstack/react-query": "^5.90.12",
     "axios": "^1.12.2",
@@ -124,6 +124,7 @@
     "@types/node": "^22.18.6",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@vercel/nft": "^1.5.0",
     "autoprefixer": "^10.4.21",
     "class-variance-authority": "^0.7.1",
     "clsx": "~2.0.1",
