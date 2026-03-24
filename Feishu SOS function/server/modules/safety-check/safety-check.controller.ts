@@ -9,6 +9,7 @@ import {
   Req,
   Res,
   NotFoundException,
+  UnauthorizedException,
   Inject,
   Logger,
 } from '@nestjs/common';
@@ -60,7 +61,11 @@ export class SafetyCheckController {
     @Body() dto: CreateEventRequest,
     @Req() req: Request,
   ) {
-    const creatorId = req.userContext.userId;
+    const creatorId = req.userContext?.userId;
+
+    if (!creatorId) {
+      throw new UnauthorizedException('当前请求缺少登录用户信息');
+    }
     
     this.logger.log(`[CreateEvent Controller] Received notificationScope: ${JSON.stringify(dto.notificationScope)}`);
     
@@ -117,6 +122,10 @@ export class SafetyCheckController {
   @NeedLogin()
   @Post(':id/remind-unreplied')
   async remindUnreplied(@Param('id') id: string, @Req() req: Request) {
+    if (!req.userContext?.userId) {
+      throw new UnauthorizedException('当前请求缺少登录用户信息');
+    }
+
     // 动态计算应用基础 URL
     const protocol = req.headers['x-forwarded-proto'] || req.protocol;
     const host = req.headers['x-forwarded-host'] || req.headers.host;

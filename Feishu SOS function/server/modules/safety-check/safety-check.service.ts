@@ -633,7 +633,7 @@ export class SafetyCheckService {
       inputIdType: 'user_id_or_open_id',
       lookupField: 'employee_feedback.employee_id.user_profile.user_id',
       lookupFieldType: 'user_profile',
-      fallbackLookup: 'none',
+      fallbackLookup: 'employee_feedback.employee_open_id',
     });
 
     const [event] = await this.db
@@ -645,7 +645,7 @@ export class SafetyCheckService {
       throw new NotFoundException('事件不存在');
     }
 
-    const [feedback] = await this.db
+    let [feedback] = await this.db
       .select()
       .from(employeeFeedback)
       .where(
@@ -655,12 +655,34 @@ export class SafetyCheckService {
         ),
       );
 
+    let matchedField = 'none';
+
+    if (feedback) {
+      matchedField = 'employee_feedback.employee_id.user_profile.user_id';
+    }
+
+    if (!feedback) {
+      [feedback] = await this.db
+        .select()
+        .from(employeeFeedback)
+        .where(
+          and(
+            eq(employeeFeedback.eventId, eventId),
+            eq(employeeFeedback.employeeOpenId, employeeId),
+          ),
+        );
+
+      if (feedback) {
+        matchedField = 'employee_feedback.employee_open_id';
+      }
+    }
+
     this.logStructured('[getFeedbackEventInfo] lookup result', {
       eventId,
       requestSource,
       inputValue: employeeId,
       matched: !!feedback,
-      matchedField: feedback ? 'employee_feedback.employee_id.user_profile.user_id' : 'none',
+      matchedField,
       currentFeedbackStatus: feedback?.feedbackStatus,
     });
 
