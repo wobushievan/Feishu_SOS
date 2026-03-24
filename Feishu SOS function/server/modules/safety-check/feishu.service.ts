@@ -25,26 +25,73 @@ export class FeishuService {
 
   /**
    * 从飞书用户对象中提取部门名称
-   * 支持多语言对象格式: department.name.zh_cn / en_us
-   * 也支持普通字符串格式
+   * 兼容 contact-v3 user.get 的 department_path / department_name 结构，
+   * 也兼容历史上可能出现的 department / department_name 字段。
    */
   private extractDepartmentName(user: any): string {
+    const directDepartmentPath = user?.department_path;
+    if (Array.isArray(directDepartmentPath) && directDepartmentPath.length > 0) {
+      for (const item of directDepartmentPath) {
+        const directName = this.extractDepartmentNameFromNode(item?.department_name);
+        if (directName) {
+          return directName;
+        }
+
+        const nestedPathName = this.extractDepartmentNameFromNode(item?.department_path?.department_path_name);
+        if (nestedPathName) {
+          return nestedPathName;
+        }
+      }
+    }
+
+    const departmentName = this.extractDepartmentNameFromNode(user?.department_name);
+    if (departmentName) {
+      return departmentName;
+    }
+
     const dept = user?.department;
-    if (!dept) return '';
-
-    // 处理多语言对象格式: department.name.zh_cn / en_us
-    if (dept.name && typeof dept.name === 'object') {
-      return dept.name.zh_cn || dept.name.en_us || '';
+    if (!dept) {
+      return '';
     }
 
-    // 处理普通字符串格式: department.name
-    if (dept.name && typeof dept.name === 'string') {
-      return dept.name;
-    }
-
-    // 兜底: department 本身就是字符串
     if (typeof dept === 'string') {
       return dept;
+    }
+
+    return this.extractDepartmentNameFromNode(dept);
+  }
+
+  private extractDepartmentNameFromNode(node: any): string {
+    if (!node) {
+      return '';
+    }
+
+    if (typeof node === 'string') {
+      return node;
+    }
+
+    if (typeof node?.name === 'string') {
+      return node.name;
+    }
+
+    if (typeof node?.department_name === 'string') {
+      return node.department_name;
+    }
+
+    if (typeof node?.i18n_name?.zh_cn === 'string' && node.i18n_name.zh_cn) {
+      return node.i18n_name.zh_cn;
+    }
+
+    if (typeof node?.i18n_name?.en_us === 'string' && node.i18n_name.en_us) {
+      return node.i18n_name.en_us;
+    }
+
+    if (typeof node?.zh_cn === 'string' && node.zh_cn) {
+      return node.zh_cn;
+    }
+
+    if (typeof node?.en_us === 'string' && node.en_us) {
+      return node.en_us;
     }
 
     return '';
@@ -148,13 +195,25 @@ export class FeishuService {
     this.logger.log(`Getting user info by user_id: ${userId}`);
     try {
       const res = await this.client.contact.user.get({
-        params: { user_id_type: 'user_id' },
+        params: { user_id_type: 'user_id', department_id_type: 'department_id' },
         path: { user_id: userId },
       });
       if (res.code === 0 && res.data?.user) {
         const user = res.data.user;
+        const rawUser = user as any;
         // 获取部门名称，支持多语言对象格式
         const departmentName = this.extractDepartmentName(user);
+        if (!departmentName) {
+          this.logStructured('[getUserInfoByUserId] department field missing from Feishu response', {
+            userId,
+            responseFieldPresence: {
+              department: !!rawUser.department,
+              departmentName: !!rawUser.department_name,
+              departmentIds: Array.isArray(user.department_ids) ? user.department_ids.length : 0,
+              departmentPath: Array.isArray(user.department_path) ? user.department_path.length : 0,
+            },
+          });
+        }
         this.logger.log(`Got user info: ${user.name}, email: ${user.email}, department: ${departmentName}`);
         return {
           email: user.email,
@@ -259,17 +318,32 @@ export class FeishuService {
     for (const openId of openIds) {
       try {
         const res = await this.client.contact.user.get({
-          params: { user_id_type: 'open_id' },
+          params: { user_id_type: 'open_id', department_id_type: 'department_id' },
           path: { user_id: openId },
         });
 
         if (res.code === 0 && res.data?.user) {
           const user = res.data.user;
-          // 获取部门名称，支持多语言对象格式
-          const departmentName = this.extractDepartmentName(user);
+          const rawUser = user as any;
           // 找到对应的原始 user_id
           const originalUserId = Array.from(userIdToOpenId.entries())
             .find(([, oid]) => oid === openId)?.[0] || openId;
+          // 获取部门名称，支持多语言对象格式
+          const departmentName = this.extractDepartmentName(user);
+          if (!departmentName) {
+            this.logStructured('[batchGetUserInfo] department field missing from mapped user lookup', {
+              originalInputValue: originalUserId,
+              originalInputType: 'user_id',
+              lookupIdValue: openId,
+              lookupIdType: 'open_id',
+              responseFieldPresence: {
+                department: !!rawUser.department,
+                departmentName: !!rawUser.department_name,
+                departmentIds: Array.isArray(user.department_ids) ? user.department_ids.length : 0,
+                departmentPath: Array.isArray(user.department_path) ? user.department_path.length : 0,
+              },
+            });
+          }
           result.set(originalUserId, {
             name: user.name || '',
             department: departmentName,
@@ -301,14 +375,27 @@ export class FeishuService {
             sourceReason: 'batchGetId(user_id_type=user_id) did not map this input',
           });
           const res = await this.client.contact.user.get({
-            params: { user_id_type: 'open_id' },
+            params: { user_id_type: 'open_id', department_id_type: 'department_id' },
             path: { user_id: id },
           });
 
           if (res.code === 0 && res.data?.user) {
             const user = res.data.user;
+            const rawUser = user as any;
             // 获取部门名称，支持多语言对象格式
             const departmentName = this.extractDepartmentName(user);
+            if (!departmentName) {
+              this.logStructured('[batchGetUserInfo] department field missing from fallback open_id lookup', {
+                originalInputValue: id,
+                originalInputType: 'open_id',
+                responseFieldPresence: {
+                  department: !!rawUser.department,
+                  departmentName: !!rawUser.department_name,
+                  departmentIds: Array.isArray(user.department_ids) ? user.department_ids.length : 0,
+                  departmentPath: Array.isArray(user.department_path) ? user.department_path.length : 0,
+                },
+              });
+            }
             result.set(id, {
               name: user.name || '',
               department: departmentName,
